@@ -1,0 +1,11 @@
+[package]
+name = "guii"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+flagset = { version = "0.4.7", default-features = false }
+fontdue = "0.9.3"
+hashbrown = "0.15.5"
+thiserror = { version = "2.0.12", default-features = false }
+wut = { path = "../wut", version = "*" }
