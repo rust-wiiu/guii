@@ -4,7 +4,7 @@ use wut::gx2::{
     buffer::Flags,
     shader::{
         self, Attribute, ShaderType,
-        sampler::{Sampler, TexClamp, TexXyFilter},
+        sampler::{CompareFn, Sampler, TexClamp, TexXyFilter},
     },
     target::{RenderTarget, Renderable},
     types::{Mat4x4, Vec2, Vec3, Vec4},
@@ -98,6 +98,8 @@ impl<T: RenderTarget> Renderable<T> for Guii<T> {
                 wut::sys::GX2BlendMode::GX2_BLEND_MODE_INV_SRC_ALPHA, // Changed this line
                 wut::sys::GX2BlendCombineMode::GX2_BLEND_COMBINE_MODE_ADD,
             );
+
+            wut::sys::GX2SetDepthOnlyControl(1, 1, CompareFn::Lequal.into());
         }
 
         self.shader

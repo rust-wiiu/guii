@@ -1,4 +1,4 @@
-use crate::GuiiError;
+use crate::{GuiiError, layout::Scaling};
 use core::alloc::GlobalAlloc;
 use fontdue::{self, Metrics};
 use hashbrown::HashMap;
@@ -9,7 +9,7 @@ use wut::{
             surface::{self, Surface},
             texture::{self, Texture},
         },
-        types::Vec2,
+        types::{Vec2, Vec4},
     },
     sys::GLOBAL_ALLOCATOR,
     vec::Vec,
@@ -24,20 +24,20 @@ pub struct TexCoords {
 }
 
 impl TexCoords {
-    pub fn lb(&self) -> Vec2<f32> {
-        Vec2::new(self.left, self.bottom)
-    }
-
     pub fn lt(&self) -> Vec2<f32> {
         Vec2::new(self.left, self.top)
     }
 
-    pub fn rb(&self) -> Vec2<f32> {
-        Vec2::new(self.right, self.bottom)
-    }
-
     pub fn rt(&self) -> Vec2<f32> {
         Vec2::new(self.right, self.top)
+    }
+
+    pub fn lb(&self) -> Vec2<f32> {
+        Vec2::new(self.left, self.bottom)
+    }
+
+    pub fn rb(&self) -> Vec2<f32> {
+        Vec2::new(self.right, self.bottom)
     }
 }
 
@@ -373,5 +373,29 @@ impl Atlus {
 
     pub fn texture(&self) -> &Texture {
         &self.tex
+    }
+
+    pub fn layout(&self, text: &str, scale: impl Scaling) -> Vec2<usize> {
+        let scale = scale.relative(Self::PX);
+        let mut size = Vec2::new(0, (Self::PX as f32 * scale) as usize);
+
+        let mut width = 0;
+
+        for c in text.chars() {
+            if c == '\n' {
+                size.x = width.max(size.x);
+                size.y += (Self::PX as f32 * scale) as usize;
+                width = 0;
+                continue;
+            }
+
+            let (_, metrics) = self.get(c);
+
+            width += (metrics.advance_width * scale) as usize;
+        }
+
+        size.x = width.max(size.x);
+
+        size
     }
 }

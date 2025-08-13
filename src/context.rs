@@ -1,26 +1,37 @@
-use crate::{font::Atlus, guii::Guii};
-use wut::gx2::{
-    color::Color,
-    target::RenderTarget,
-    types::{Extend, Mat3x2, Vec2, Vec3},
+use crate::{
+    font::Atlus,
+    guii::Guii,
+    layout::{Coordinate, Layout, Scaling},
+};
+use core::fmt::Display;
+use wut::{
+    format,
+    gx2::{
+        color::Color,
+        target::RenderTarget,
+        types::{Extend, Mat3x2, Vec2, Vec3},
+    },
+    string::String,
 };
 
-pub struct Context<'a, T: RenderTarget> {
-    guii: &'a mut Guii<T>,
+pub struct Context<'l, Target: RenderTarget> {
+    guii: &'l mut Guii<Target>,
     width: usize,
     height: usize,
     z: f32,
+    layout: Layout,
 }
 
-impl<'a, T: RenderTarget> Context<'a, T> {
+impl<'l, Target: RenderTarget> Context<'l, Target> {
     const Z_INCREASE: f32 = 0.0001;
 
-    pub(crate) fn new(guii: &'a mut Guii<T>, width: usize, height: usize) -> Self {
+    pub(crate) fn new(guii: &'l mut Guii<Target>, width: usize, height: usize) -> Self {
         Self {
             guii,
             width,
             height,
             z: 0.0,
+            layout: Layout::new(100, 100),
         }
     }
 
@@ -53,7 +64,7 @@ impl<'a, T: RenderTarget> Context<'a, T> {
         w: impl Coordinate,
         h: impl Coordinate,
         color: Color,
-    ) {
+    ) -> Vec2<usize> {
         let x = x.absolute(self.width) as f32;
         let y = y.absolute(self.height) as f32;
         let w = w.absolute(self.width) as f32;
@@ -84,26 +95,28 @@ impl<'a, T: RenderTarget> Context<'a, T> {
         );
 
         self.z += Self::Z_INCREASE;
+
+        Vec2::new(w as usize, h as usize)
     }
 
     pub fn text(
         &mut self,
-        text: impl AsRef<str>,
+        text: &str,
         x: impl Coordinate,
         y: impl Coordinate,
         scale: impl Scaling,
         color: Color,
-    ) {
+    ) -> Vec2<usize> {
         let mut x = x.absolute(self.width);
         let mut y = y.absolute(self.height);
         let scale = scale.relative(Atlus::PX);
 
         let origin = (x, y);
 
-        for c in text.as_ref().chars() {
+        for c in text.chars() {
             if c == '\n' {
                 x = origin.0;
-                y -= (Atlus::PX as f32 * scale) as usize;
+                y += (Atlus::PX as f32 * scale) as usize;
                 continue;
             }
 
@@ -141,53 +154,279 @@ impl<'a, T: RenderTarget> Context<'a, T> {
         }
 
         self.z += Self::Z_INCREASE;
+
+        Vec2::new(x - origin.0, (scale * Atlus::PX as f32) as usize)
+    }
+
+    pub fn border(
+        &mut self,
+        x: impl Coordinate,
+        y: impl Coordinate,
+        w: impl Coordinate,
+        h: impl Coordinate,
+        size: usize,
+        color: Color,
+    ) -> Vec2<usize> {
+        let x = x.absolute(self.width);
+        let y = y.absolute(self.height);
+        let w = w.absolute(self.width);
+        let h = h.absolute(self.height);
+
+        self.rect(x, y, w, size, color);
+        self.rect(x, y, size, h, color);
+        self.rect(x + w - size, y, size, h, color);
+        self.rect(x, y + h - size, w, size, color);
+
+        Vec2::new(w, h)
+    }
+
+    pub fn label(&mut self, text: &str) {
+        let size = self.text(
+            text,
+            self.layout.current.x,
+            self.layout.current.y,
+            32,
+            Color::black(),
+        );
+
+        self.layout.current.y += size.y + self.layout.gap.y;
+    }
+
+    pub fn button(&mut self, text: &str) -> button::Response {
+        const PADDING: usize = 10;
+
+        let response = button::Response { clicked: false };
+
+        let size = self.guii.atlus.layout(text, 32);
+
+        let size = self.rect(
+            self.layout.current.x,
+            self.layout.current.y,
+            size.x + PADDING * 2,
+            size.y + PADDING,
+            Color::black(),
+        );
+
+        self.text(
+            text,
+            self.layout.current.x + PADDING,
+            self.layout.current.y + PADDING,
+            32,
+            Color::white(),
+        );
+
+        self.layout.current.y += size.y + self.layout.gap.y;
+
+        response
+    }
+
+    pub fn number<'a, T: Display>(
+        &mut self,
+        text: &str,
+        value: &'a mut T,
+        delta: T,
+    ) -> number::Response {
+        const PADDING: usize = 10;
+        const SCALE: usize = 32;
+        const TEXT_COLOR: Color = Color::white();
+        const RECT_COLOR: Color = Color::black();
+
+        let response = number::Response { changed: false };
+
+        let offset = self.text(
+            text,
+            self.layout.current.x,
+            self.layout.current.y + PADDING,
+            SCALE,
+            RECT_COLOR,
+        ) + Vec2::new(PADDING, 0);
+
+        let text = format!("{:05}", value);
+
+        let size = self.guii.atlus.layout(&text, 32);
+
+        let value_pad = PADDING + SCALE + PADDING;
+
+        let size = self.rect(
+            offset.x + self.layout.current.x,
+            self.layout.current.y,
+            value_pad + size.x + value_pad,
+            PADDING + size.y,
+            RECT_COLOR,
+        );
+
+        self.text(
+            &format!("{}", wut::font::icons::gamepad::LEFT),
+            offset.x + self.layout.current.x + PADDING,
+            self.layout.current.y + PADDING,
+            SCALE,
+            TEXT_COLOR,
+        );
+
+        self.text(
+            &text,
+            offset.x + value_pad + self.layout.current.x,
+            self.layout.current.y + PADDING,
+            32,
+            TEXT_COLOR,
+        );
+
+        self.text(
+            &format!("{}", wut::font::icons::gamepad::RIGHT),
+            offset.x + self.layout.current.x + size.x - value_pad + PADDING,
+            self.layout.current.y + PADDING,
+            SCALE,
+            TEXT_COLOR,
+        );
+
+        self.layout.current.y += size.y + self.layout.gap.y;
+
+        response
+    }
+
+    pub fn checkbox(&mut self, text: &str, value: &mut bool) -> checkbox::Response {
+        const PADDING: usize = 10;
+        const SCALE: usize = 32;
+        const WHITE: Color = Color::white();
+        const BLACK: Color = Color::black();
+
+        let response = checkbox::Response { changed: false };
+
+        let size = self.text(
+            text,
+            self.layout.current.x,
+            self.layout.current.y + PADDING,
+            SCALE,
+            BLACK,
+        );
+
+        let offset = size + Vec2::new(SCALE, 0);
+
+        self.rect(
+            self.layout.current.x + offset.x,
+            self.layout.current.y,
+            SCALE + 12,
+            SCALE + 12,
+            WHITE,
+        );
+
+        self.rect(
+            self.layout.current.x + offset.x + 4,
+            self.layout.current.y + 4,
+            SCALE + 4,
+            SCALE + 4,
+            BLACK,
+        );
+
+        self.text(
+            if *value { "x" } else { " " },
+            self.layout.current.x + offset.x + 14,
+            self.layout.current.y + 14,
+            SCALE,
+            WHITE,
+        );
+
+        self.layout.current.y += size.y + self.layout.gap.y;
+
+        response
+    }
+
+    pub fn select<T: Display>(
+        &mut self,
+        text: &str,
+        index: &mut usize,
+        options: &[T],
+    ) -> select::Response {
+        const PADDING: usize = 10;
+        const SCALE: usize = 32;
+        const WHITE: Color = Color::white();
+        const BLACK: Color = Color::black();
+
+        let response = select::Response { changed: false };
+
+        let offset = self.text(
+            text,
+            self.layout.current.x,
+            self.layout.current.y + PADDING,
+            SCALE,
+            BLACK,
+        ) + Vec2::new(PADDING, 0);
+
+        let value = format!("{}", options[*index]);
+
+        let size = self.guii.atlus.layout(&value, 32);
+
+        let value_pad = PADDING + SCALE + PADDING;
+
+        let size = self.rect(
+            offset.x + self.layout.current.x,
+            self.layout.current.y,
+            value_pad + size.x + value_pad,
+            PADDING + size.y,
+            BLACK,
+        );
+
+        self.text(
+            &format!("{}", wut::font::icons::gamepad::LEFT),
+            offset.x + self.layout.current.x + PADDING,
+            self.layout.current.y + PADDING,
+            SCALE,
+            WHITE,
+        );
+
+        self.text(
+            &value,
+            offset.x + value_pad + self.layout.current.x,
+            self.layout.current.y + PADDING,
+            32,
+            WHITE,
+        );
+
+        self.text(
+            &format!("{}", wut::font::icons::gamepad::RIGHT),
+            offset.x + self.layout.current.x + size.x - value_pad + PADDING,
+            self.layout.current.y + PADDING,
+            SCALE,
+            WHITE,
+        );
+
+        self.layout.current.y += size.y + self.layout.gap.y;
+
+        response
+    }
+
+    pub fn grid<V: Display>(
+        &mut self,
+        text: &str,
+        index: &mut usize,
+        columns: usize,
+        data: &[Target],
+        fmt: &str,
+    ) -> () {
+        todo!()
     }
 }
 
-pub trait Coordinate {
-    fn absolute(&self, reference: usize) -> usize;
-    fn relative(&self, reference: usize) -> f32;
-}
-
-impl Coordinate for usize {
-    fn absolute(&self, _: usize) -> usize {
-        *self
-    }
-
-    fn relative(&self, reference: usize) -> f32 {
-        *self as f32 / reference as f32
-    }
-}
-impl Coordinate for f32 {
-    fn absolute(&self, reference: usize) -> usize {
-        (*self * reference as f32) as usize
-    }
-
-    fn relative(&self, reference: usize) -> f32 {
-        *self / reference as f32
+pub mod button {
+    pub struct Response {
+        pub clicked: bool,
     }
 }
 
-pub trait Scaling {
-    fn absolute(&self, reference: usize) -> usize;
-    fn relative(&self, reference: usize) -> f32;
-}
-
-impl Scaling for usize {
-    fn absolute(&self, _: usize) -> usize {
-        *self
-    }
-
-    fn relative(&self, reference: usize) -> f32 {
-        *self as f32 / reference as f32
+pub mod number {
+    pub struct Response {
+        pub changed: bool,
     }
 }
-impl Scaling for f32 {
-    fn absolute(&self, reference: usize) -> usize {
-        (*self * reference as f32) as usize
-    }
 
-    fn relative(&self, _: usize) -> f32 {
-        *self
+pub mod checkbox {
+    pub struct Response {
+        pub changed: bool,
+    }
+}
+
+pub mod select {
+    pub struct Response {
+        pub changed: bool,
     }
 }
