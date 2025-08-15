@@ -1,4 +1,4 @@
-use crate::{GuiiError, layout::Scaling};
+use crate::{GuiiError, config::layout::Scaling};
 use core::alloc::GlobalAlloc;
 use fontdue::{self, Metrics};
 use hashbrown::HashMap;
@@ -375,26 +375,26 @@ impl Atlus {
         &self.tex
     }
 
-    pub fn layout(&self, text: &str, scale: impl Scaling) -> Vec2<usize> {
+    pub fn layout(&self, text: &str, scale: impl Scaling) -> Vec2<f32> {
         let scale = scale.relative(Self::PX);
-        let mut size = Vec2::new(0, (Self::PX as f32 * scale) as usize);
+        let mut size = Vec2::new(0.0, (Self::PX as f32 * scale));
 
-        let mut width = 0;
+        let mut width = 0.0;
 
         for c in text.chars() {
             if c == '\n' {
-                size.x = width.max(size.x);
-                size.y += (Self::PX as f32 * scale) as usize;
-                width = 0;
+                size.x = size.x.max(width);
+                size.y += (Self::PX as f32 * scale);
+                width = 0.0;
                 continue;
             }
 
             let (_, metrics) = self.get(c);
 
-            width += (metrics.advance_width * scale) as usize;
+            width += (metrics.advance_width * scale);
         }
 
-        size.x = width.max(size.x);
+        size.x = size.x.max(width);
 
         size
     }

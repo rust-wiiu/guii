@@ -1,4 +1,4 @@
-use crate::{context::Context, error::GuiiError, font::Atlus, vector::Vector};
+use crate::{config::Config, error::GuiiError, focus::Focus, font::Atlus, ui::Ui, vector::Vector};
 use core::marker::PhantomData;
 use wut::gx2::{
     buffer::Flags,
@@ -18,6 +18,8 @@ pub struct Guii<T: RenderTarget> {
     pub(crate) colors: Vector<Vec4<f32>>,
     pub(crate) sampler: Sampler,
     pub(crate) atlus: Atlus,
+    pub(crate) focus: Focus,
+    pub(crate) gamepad: wut::gamepad::Gamepad,
     // indices: Vector<u32>,
     projection: Mat4x4<f32>,
     shader: shader::Shader,
@@ -34,6 +36,8 @@ impl<T: RenderTarget> Guii<T> {
             colors: Vector::default(Flags::VertexBuffer)?,
             sampler: Sampler::new(TexClamp::Clamp, TexXyFilter::Linear),
             atlus: Atlus::new()?,
+            focus: Focus::new(),
+            gamepad: wut::gamepad::Gamepad::new(wut::gamepad::Port::DRC),
             // indices: Vector::new(Flags::BindIndexBuffer)?,
             projection: T::ortho(),
             shader: shader::Shader::new(
@@ -53,14 +57,18 @@ impl<T: RenderTarget> Guii<T> {
         Self::new_indexed(0)
     }
 
-    pub fn build<F: Fn(&mut Context<T>) -> ()>(&mut self, f: F) {
+    pub fn build<F: FnOnce(&mut Ui<T>) -> ()>(&mut self, style: Config, f: F) {
         self.vertices.clear();
         self.tex.clear();
         self.colors.clear();
 
-        let (width, height) = T::size();
-        let mut context = Context::new(self, width, height);
-        f(&mut context);
+        let items = {
+            let mut context = Ui::new(self, style);
+            f(&mut context);
+            context.index
+        };
+
+        self.focus.clamp(0, items);
 
         // self.shader
         //     .attributes

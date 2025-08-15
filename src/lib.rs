@@ -2,11 +2,13 @@
 
 extern crate alloc;
 
-pub mod context;
+pub mod config;
 pub mod error;
+pub mod focus;
 pub mod font;
 pub mod guii;
-pub mod layout;
+pub mod ui;
 pub mod vector;
+pub mod widgets;
 
-pub use {context::Context, error::GuiiError, guii::Guii};
+pub use {error::GuiiError, guii::Guii, ui::Ui};
